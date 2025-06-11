@@ -1060,7 +1060,6 @@ func (r *ReconcilerBase) updatePVCBoundContion(pvc *corev1.PersistentVolumeClaim
 	})
 
 	boundMessage := ""
-	boundReason := ""
 
 	pvcPrime, exists := pvc.GetAnnotations()[cc.AnnPVCPrimeName]
 	if exists {
@@ -1071,7 +1070,6 @@ func (r *ReconcilerBase) updatePVCBoundContion(pvc *corev1.PersistentVolumeClaim
 				// split so we can remove prime name prefix from event message
 				res := strings.Split(event.Message, pvcPrime)
 				boundMessage = res[len(res)-1]
-				boundReason = event.Reason
 			}
 		}
 		if boundMessage == "" {
@@ -1080,18 +1078,18 @@ func (r *ReconcilerBase) updatePVCBoundContion(pvc *corev1.PersistentVolumeClaim
 	} else {
 		// if not using populators just get the latest event
 		boundMessage = events.Items[0].Message
-		boundReason = events.Items[0].Reason
 	}
 
 	anno := pvc.GetAnnotations()
 
 	if pvc.Status.Phase == corev1.ClaimBound {
 		anno[cc.AnnBoundCondition] = "true"
+		anno[cc.AnnBoundConditionReason] = "Bound"
 	} else {
 		anno[cc.AnnBoundCondition] = "false"
+		anno[cc.AnnBoundConditionReason] = "Pending"
 	}
 	anno[cc.AnnBoundConditionMessage] = boundMessage
-	anno[cc.AnnBoundConditionReason] = boundReason
 }
 
 func (r *ReconcilerBase) emitConditionEvent(dataVolume *cdiv1.DataVolume, originalCond []cdiv1.DataVolumeCondition) {
