@@ -203,7 +203,9 @@ func (r *ImportReconciler) Reconcile(_ context.Context, req reconcile.Request) (
 	}
 
 	updatePVCBoundContion(pvc, r.getPVCEventList(pvc))
-	r.updatePVC(pvc, r.log)
+	if err := r.updatePVC(pvc, log); err != nil {
+		return reconcile.Result{}, err
+	}
 
 	shouldReconcile, err := r.shouldReconcilePVC(pvc, log)
 	if err != nil {
