@@ -486,3 +486,41 @@ func createBlockPvc(name, ns string, annotations, labels map[string]string) *cor
 	pvcDef.Spec.VolumeMode = &volumeMode
 	return pvcDef
 }
+
+func updatePVCBoundContion(pvc *corev1.PersistentVolumeClaim, events *corev1.EventList) {
+	if len(events.Items) == 0 {
+		return
+	}
+
+	boundMessage := ""
+
+	pvcPrime, exists := pvc.GetAnnotations()[cc.AnnPVCPrimeName]
+	if exists {
+		// if we are using populators get the latest event from prime pvc
+		pvcPrime = fmt.Sprintf("[%s] : ", pvcPrime)
+		for _, event := range events.Items {
+			if strings.Contains(event.Message, pvcPrime) {
+				// split so we can remove prime name prefix from event message
+				res := strings.Split(event.Message, pvcPrime)
+				boundMessage = res[len(res)-1]
+			}
+		}
+		if boundMessage == "" {
+			return
+		}
+	} else {
+		// if not using populators just get the latest event
+		boundMessage = events.Items[0].Message
+	}
+
+	anno := pvc.GetAnnotations()
+
+	if pvc.Status.Phase == corev1.ClaimBound {
+		anno[cc.AnnBoundCondition] = "true"
+		anno[cc.AnnBoundConditionReason] = "Bound"
+	} else {
+		anno[cc.AnnBoundCondition] = "false"
+		anno[cc.AnnBoundConditionReason] = "Pending"
+	}
+	anno[cc.AnnBoundConditionMessage] = boundMessage
+}
