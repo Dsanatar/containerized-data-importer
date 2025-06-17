@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -2263,6 +2264,72 @@ var _ = Describe("[vendor:cnv-qe@redhat.com][level:component]DataVolume tests", 
 			Entry("[test_id:5913] (controller rendering)", "false", verifyControllerRenderingEvent),
 			Entry("[rfe_id:10985][crit:high][test_id:11047] (webhook rendering)", "true", verifyWebhookRenderingEvent),
 		)
+
+		It("DV bound condition message gets updated when clone gets stuck", func() {
+			sourceDv := utils.NewDataVolumeWithHTTPImport("source-dv", "1Gi", tinyCoreQcow2URL())
+			Expect(sourceDv).ToNot(BeNil())
+			By(fmt.Sprintf("creating new source dv %s with annotations", sourceDv.Name))
+			sourceDv, err = utils.CreateDataVolumeFromDefinition(f.CdiClient, f.Namespace.Name, sourceDv)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("verifying pvc was created")
+			pvc, err := utils.WaitForPVC(f.K8sClient, sourceDv.Namespace, sourceDv.Name)
+			Expect(err).ToNot(HaveOccurred())
+			f.ForceBindIfWaitForFirstConsumer(pvc)
+
+			scName := "test-sc"
+			sc := &storagev1.StorageClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: scName,
+				},
+				Provisioner: "openshift-storage.rbd.csi.ceph.com",
+			}
+
+			_, _ = f.K8sClient.StorageV1().StorageClasses().Create(context.TODO(), sc, metav1.CreateOptions{})
+
+			requestedSize := resource.MustParse("100Mi")
+			dataVolume := createCloneDataVolume(dataVolumeName,
+				cdiv1.StorageSpec{
+					AccessModes:      []v1.PersistentVolumeAccessMode{v1.ReadWriteMany},
+					StorageClassName: &scName,
+					Resources: v1.VolumeResourceRequirements{
+						Requests: v1.ResourceList{
+							v1.ResourceStorage: requestedSize,
+						},
+					},
+				}, fillCommand)
+
+			By("verifying pvc was created")
+			pvc, err = utils.WaitForPVC(f.K8sClient, dataVolume.Namespace, dataVolume.Name)
+			Expect(err).ToNot(HaveOccurred())
+			f.ForceBindIfWaitForFirstConsumer(pvc)
+			eventList := &v1.EventList{}
+
+			err = f.CrClient.List(context.TODO(), eventList,
+				client.InNamespace(pvc.GetNamespace()),
+				client.MatchingFields{"involvedObject.name": pvc.GetName(),
+					"involvedObject.uid": string(pvc.GetUID())},
+			)
+
+			sort.Slice(eventList.Items, func(i, j int) bool {
+				return eventList.Items[i].LastTimestamp.Time.After(eventList.Items[j].LastTimestamp.Time)
+			})
+
+			By("Checking PVC events")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(eventList.Items).ToNot(BeEmpty())
+
+			latestEvent := eventList.Items[0].Message
+
+			boundCondition := &cdiv1.DataVolumeCondition{
+				Type:    cdiv1.DataVolumeBound,
+				Status:  v1.ConditionFalse,
+				Message: latestEvent,
+				Reason:  "Pending",
+			}
+
+			utils.WaitForConditions(f, dataVolume.Name, f.Namespace.Name, timeout, pollingInterval, boundCondition)
+		})
 
 		It("[test_id:6483]Import pod should not have size corrected on block", func() {
 			SetFilesystemOverhead(f, "0.50", "0.50")
