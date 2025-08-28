@@ -437,12 +437,12 @@ func createOperatorDeployment(operatorVersion, namespace, deployClusterResources
 	container.LivenessProbe = &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{
 			HTTPGet: &corev1.HTTPGetAction{
-				Scheme: corev1.URISchemeHTTPS,
+				Scheme: corev1.URISchemeHTTP,
 				Port: intstr.IntOrString{
 					Type:   intstr.Int,
-					IntVal: 8443,
+					IntVal: 8444,
 				},
-				Path: "/metrics",
+				Path: "/healthz",
 			},
 		},
 		InitialDelaySeconds: 5,
@@ -451,12 +451,12 @@ func createOperatorDeployment(operatorVersion, namespace, deployClusterResources
 	container.ReadinessProbe = &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{
 			HTTPGet: &corev1.HTTPGetAction{
-				Scheme: corev1.URISchemeHTTPS,
+				Scheme: corev1.URISchemeHTTP,
 				Port: intstr.IntOrString{
 					Type:   intstr.Int,
-					IntVal: 8443,
+					IntVal: 8444,
 				},
-				Path: "/metrics",
+				Path: "/readyz",
 			},
 		},
 		InitialDelaySeconds: 5,
@@ -472,6 +472,11 @@ func createPrometheusPorts() []corev1.ContainerPort {
 		{
 			Name:          "metrics",
 			ContainerPort: 8443,
+			Protocol:      "TCP",
+		},
+		{
+			Name:          "health",
+			ContainerPort: 8444,
 			Protocol:      "TCP",
 		},
 	}
